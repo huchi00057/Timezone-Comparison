@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>時區比較表</title>
+<script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; }
+  table { border-collapse: collapse; width: 100%; table-layout: fixed; margin-top: 20px; }
+  th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+  th { background-color: #f0f0f0; }
+  .controls { margin-bottom: 20px; }
+  .spacer { height: 20px; } /* 空白區域 */
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <label>比較時區數量:
+    <select id="tz-count">
+      <option value="2">2</option>
+      <option value="3" selected>3</option>
+      <option value="4">4</option>
+      <option value="5">5</option>
+    </select>
+  </label>
+
+  <span id="tz-selects"></span>
+
+  <label>顯示範圍:
+    <select id="range">
+      <option value="1">1天</option>
+      <option value="7" selected>7天</option>
+    </select>
+  </label>
+</div>
+
+<div class="spacer"></div>
+
+<label>起始時間:
+  <select id="start-time"></select>
+</label>
+
+<table id="grid-table"></table>
+
+<script>
+const { DateTime } = luxon;
+
+const timezones = [
+  "Asia/Taipei", "America/New_York", "America/Chicago",
+  "America/Los_Angeles", "Europe/London", "Europe/Berlin",
+  "Australia/Sydney", "Asia/Tokyo"
+];
+
+let selectedTimezones = ["Asia/Taipei", "America/Los_Angeles", "America/Chicago"];
+let dayRange = 7;
+let startTime = null; // 將由第一個時區當前時間初始化
+
+const tzCountSelect = document.getElementById("tz-count");
+const tzSelectsContainer = document.getElementById("tz-selects");
+const rangeSelect = document.getElementById("range");
+const gridTable = document.getElementById("grid-table");
+const startTimeSelect = document.getElementById("start-time");
+
+// 產生時區下拉
+function createTimezoneSelectors() {
+  tzSelectsContainer.innerHTML = "";
+  const count = parseInt(tzCountSelect.value);
+  for (let i = 0; i < count; i++) {
+    const select = document.createElement("select");
+    select.id = `tz-${i}`;
+    timezones.forEach(tz => {
+      const option = document.createElement("option");
+      option.value = tz;
+      option.innerText = tz;
+      if (selectedTimezones[i] === tz) option.selected = true;
+      select.appendChild(option);
+    });
+    select.addEventListener("change", () => {
+      selectedTimezones[i] = select.value;
+      createStartTimeOptions(); // 重新生成起始時間
+      updateTable();
+    });
+    tzSelectsContainer.appendChild(select);
+  }
+  selectedTimezones = selectedTimezones.slice(0, count);
+}
+
+// 生成每半小時時間選項，預設為第一個時區當前時間
+function createStartTimeOptions() {
+  startTimeSelect.innerHTML = "";
+  if (!selectedTimezones[0]) return;
+
+  const firstTz = selectedTimezones[0];
+  const now = DateTime.now().setZone(firstTz);
+  if (!startTime) {
+    // 預設為最近的半小時
+    const roundedMinutes = now.minute < 30 ? 0 : 30;
+    startTime = `${String(now.hour).padStart(2,'0')}:${String(roundedMinutes).padStart(2,'0')}`;
+  }
+
+  for (let h = 0; h < 24; h++) {
+    ["00", "30"].forEach(min => {
+      const timeStr = `${String(h).padStart(2,'0')}:${min}`;
+      const option = document.createElement("option");
+      option.value = timeStr;
+      option.innerText = timeStr;
+      if (timeStr === startTime) option.selected = true;
+      startTimeSelect.appendChild(option);
+    });
+  }
+}
+
+function getDateList() {
+  const firstTz = selectedTimezones[0];
+  const [hour, minute] = startTime.split(":").map(Number);
+  const today = DateTime.now().setZone(firstTz).set({ hour, minute });
+  let dates = [];
+  for (let i = 0; i < dayRange; i++) {
+    dates.push(today.plus({ days: i }));
+  }
+  return dates;
+}
+
+function updateTable() {
+  gridTable.innerHTML = "";
+  const dates = getDateList();
+
+  // 表頭
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+
+  const thEmpty = document.createElement("th");
+  thEmpty.innerText = "時區";
+  headerRow.appendChild(thEmpty);
+
+  dates.forEach(d => {
+    const th = document.createElement("th");
+    th.innerText = `${d.toFormat("ccc")} ${d.toFormat("LL-dd")}`; // 顯示月份-日期
+    headerRow.appendChild(th);
+  });
+
+  thead.appendChild(headerRow);
+  gridTable.appendChild(thead);
+
+  // 表身
+  const tbody = document.createElement("tbody");
+  selectedTimezones.forEach(tz => {
+    const row = document.createElement("tr");
+    const tzCell = document.createElement("td");
+    tzCell.innerText = tz;
+    row.appendChild(tzCell);
+
+    dates.forEach(d => {
+      const cell = document.createElement("td");
+      const dt = d.setZone(tz);
+      const dayNumber = dt.toFormat("d"); // 該時區日期
+      cell.innerText = `${dt.toFormat("HH:mm")} (${dayNumber})`;
+      row.appendChild(cell);
+    });
+
+    tbody.appendChild(row);
+  });
+
+  gridTable.appendChild(tbody);
+}
+
+// 事件
+tzCountSelect.addEventListener("change", () => {
+  createTimezoneSelectors();
+  createStartTimeOptions();
+  updateTable();
+});
+
+rangeSelect.addEventListener("change", () => {
+  dayRange = parseInt(rangeSelect.value);
+  updateTable();
+});
+
+startTimeSelect.addEventListener("change", () => {
+  startTime = startTimeSelect.value;
+  updateTable();
+});
+
+// 初始化
+createTimezoneSelectors();
+createStartTimeOptions();
+updateTable();
+setInterval(updateTable, 60000); // 每分鐘更新
+</script>
+
+</body>
+</html>
